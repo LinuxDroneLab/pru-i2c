@@ -10,17 +10,32 @@
 volatile register unsigned __R31;
 
 #define VIRTIO_CONFIG_S_DRIVER_OK       4
+#define CLKACTIVITY_I2C_FCLK            24
+#define CLKACTIVITY_L4LS_GCLK           8
+
+
+struct EcapData
+{
+    char cmd[8];
+    uint32_t reg[8];
+};
 
 unsigned char payload[RPMSG_BUF_SIZE];
-uint8_t buffer[6] = { };
+struct EcapData *result = (struct EcapData *) payload;
 
-// TODO: implementare lettura dati via i2c
+uint8_t buffer[6] = {'A','B','C','D','E', 0 };
+
 int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 {
 
+    {
+        int i = 0;
+        for(i = 0; i < 8; i++) {
+            result->reg[i] = 0;
+        }
+    }
     uint32_t ticks = 0;
     uint32_t maxTicks = 20000000;
-    CT_I2C2.I2C_SA_bit.I2C_SA_SA = address; // write mode
 
     // TODO poll low for BB in I2C_IRQSTATUS_RAW
     while(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB) {
@@ -29,22 +44,6 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
             return 0;
         }
     }
-    // qui BB = 0; Come se se nel frattempo il bus non è stato occupato da qualcun altro?
-    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB = 0b1; // master mode. The sw controls BB
-
-    // TODO what with BF (Bus Free)?
-
-    // wait for Access Ready
-    ticks = 0;
-    while(!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY) {
-        ticks++;
-        if(ticks > maxTicks) {
-            CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB = 0b0;
-            return 0;
-        }
-
-    }
-    // qui ARDY = 1
 
     /*
      * send reg
@@ -64,16 +63,30 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
      * Finally the data transfer is started by commanding a START on the bus using I2CMasterStart()
      *
      */
-    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b0; // Not required stop condition
+
+    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
+    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
+
+    CT_I2C2.I2C_SA_bit.I2C_SA_SA = address; // 7 bit address
     CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = 1; // devo inviare reg (1 byte)
-    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b1; // Start condition <-- qui parte la comunicazione
+//    CT_I2C2.I2C_CON_bit.I2C_CON_MST = 0b1; // master mode
+//    CT_I2C2.I2C_CON_bit.I2C_CON_TRX = 0b1; // transmitter mode
+//    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b0; // Stop condition not required
+//    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b1; // Start condition <-- qui parte la comunicazione
+    CT_I2C2.I2C_CON = 0x8601;
+
+    // debug
+    result->reg[0] = CT_I2C2.I2C_CNT;
+    result->reg[1] = CT_I2C2.I2C_CON;
+    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
+    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
+    result->reg[4] = 0x6F;
 
     // poll for XRDY = 1 ? clear XRDY?
     ticks = 0;
     while(!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY) {
         ticks++;
         if(ticks > maxTicks) {
-            CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB = 0b0;
             return 0;
         }
     }
@@ -81,23 +94,68 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 
     // write register to read
     CT_I2C2.I2C_DATA = reg;
-    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 0b1;
+    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 0x1;
 
     // wait for access ready
     ticks = 0;
     while(!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY) {
         ticks++;
         if(ticks > maxTicks) {
-            CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB = 0b0;
             return 0;
         }
     }
+    // debug
+    result->reg[0] = CT_I2C2.I2C_CNT;
+    result->reg[1] = CT_I2C2.I2C_CON;
+    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
+    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
+    result->reg[4] = 0x70;
+
+    /*
+     * Da analizzare: 26/02/2018
+     * Sizeof struct: 40
+     * Message received from PRU:DATAOK, reg1-0x3, reg2-0x8403, reg3-0x1014, reg4-0x8003, reg5-0x73, reg6-0x3, reg7-0x11c, reg8-0x37
+     * Message received from PRU:DATAKO, reg1-0x1, reg2-0x8600, reg3-0x11c, reg4-0x8000, reg5-0x70, reg6-0x0, reg7-0x0, reg8-0x0
+     * NOTA: reg2-0x8600 (dovrebbe essere 0x8601)
+     * Qualcosa non va nella inizializzazione del ciclo. Riporta anche valori precedenti degli interrupt (vedi reg3 = reg7)
+     */
+
+
+    if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK) {
+        CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK = 0x1;
+    }
+    if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF) {
+        CT_I2C2.I2C_SYSC_bit.I2C_SYSC_SRST = 0b1; // SoftReset Normal Mode
+        return 0;
+    }
+
+    // 16793856 - uint32_t m1 = (*CM_PER_L4LS_CLKSTCTRL);
+    // debug
+    result->reg[0] = CT_I2C2.I2C_CNT;
+    result->reg[1] = CT_I2C2.I2C_CON;
+    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
+    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
+    result->reg[4] = 0x71;
+
+
+    // FIXME: qui mi arriva un nack?
 
     // read data
     CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = bytes; // bytes
-    CT_I2C2.I2C_SA_bit.I2C_SA_SA = address | 0x01; // read mode
-    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b1; // Stop condition required
-    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b1; // Start condition (this is a repeated start)
+//    CT_I2C2.I2C_SA_bit.I2C_SA_SA = address;
+//    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b0; //
+//    CT_I2C2.I2C_CON_bit.I2C_CON_MST = 0b1; // master mode
+//    CT_I2C2.I2C_CON_bit.I2C_CON_TRX = 0b0; // receiver mode
+//    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b1; // Stop condition required
+//    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b1; // Start condition (this is a repeated start)
+      CT_I2C2.I2C_CON = 0x8403;
+
+      // debug
+      result->reg[0] = CT_I2C2.I2C_CNT;
+      result->reg[1] = CT_I2C2.I2C_CON;
+      result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
+      result->reg[3] = CT_I2C2.I2C_BUFSTAT;
+      result->reg[4] = 0x72;
 
     uint8_t count;
     for(count = 0; count < bytes; count++ ) {
@@ -106,37 +164,89 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
         while(!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY) {
             ticks++;
             if(ticks > maxTicks) {
-                CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB = 0b0;
                 return 0;
             }
         }
         buffer[count] = CT_I2C2.I2C_DATA;
         // require next data
         CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 0b1;
+        if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR) {
+            break;
+        }
+        uint32_t i = 0;
+        for(i = 0; i < 20000; i++); // wait 1us
     }
-    return 1;
+
+    // debug
+    result->reg[4] = 0x73;
+    result->reg[5] = CT_I2C2.I2C_CNT;
+    result->reg[6] = CT_I2C2.I2C_IRQSTATUS_RAW;
+    result->reg[7] = CT_I2C2.I2C_SCLH;
+
+    return count;
 }
 
 int testConnection()
 {
-    if (readBytes(HMC5883L_DEFAULT_ADDRESS, HMC5883L_RA_ID_A, 3, buffer) == 3)
+    int nbytes = readBytes(HMC5883L_ADDRESS, HMC5883L_RA_ID_A, 3, buffer);
+    if (nbytes == 3)
     {
         return (buffer[0] == 'H' && buffer[1] == '4' && buffer[2] == '3');
     }
     return 0;
 }
+
+void set400KHz() {
+    // prescaler
+    CT_I2C2.I2C_PSC = 0x02; // 24MHz
+    /*
+     * tLow = (SCLL +7)*42ns
+     * 42ns is the time period at 24MHz,
+     * tLow = (1000000000ns/400000Hz)/2) is the time period (in ns) at low signal on SCL
+     * SCLL = tLow/42ns -7
+     * SCLL = 1250/42 -7
+     * SCLL is like 23 (rounded)
+     */
+    CT_I2C2.I2C_SCLL = 0x17;
+    /*
+     * tHigh = (SCLH +5)*42ns
+     * 42ns is the time period at 24MHz,
+     * tHigh = (1000000000ns/400000Hz)/2) is the time period (in ns) at high signal on SCL
+     * SCLH = tHigh/42ns -5
+     * SCLH = 1250/42 -5
+     * SCLH is like 25 (rounded)
+     */
+    CT_I2C2.I2C_SCLH = 0x19;
+}
+
+void set100KHz() {
+    // prescaler
+    CT_I2C2.I2C_PSC = 0x04; // 12MHz
+    /*
+     * tLow = (SCLL +7)*83ns
+     * 83ns is the time period at 12MHz,
+     * tLow = (1000000000ns/100000Hz)/2) is the time period (in ns) at low signal on SCL
+     * SCLL = tLow/83ns -7 = 53,241
+     * SCLL = 1250/83 -7
+     * SCLL is like 53 (rounded)
+     */
+    CT_I2C2.I2C_SCLL = 0x35;
+    /*
+     * tHigh = (SCLH +5)*83ns
+     * 83ns is the time period at 12MHz,
+     * tHigh = (1000000000ns/100000Hz)/2) is the time period (in ns) at high signal on SCL
+     * SCLH = tHigh/83ns - 5 = 55,25
+     * SCLH = 1250/83 - 5
+     * SCLH is like 55 (rounded)
+     */
+    CT_I2C2.I2C_SCLH = 0x37;
+}
+
 /**
  * main.c
  */
 int main(void)
 {
-    /*
-     * FROM: https://e2e.ti.com/support/arm/sitara_arm/f/791/p/458311/1659097
-     * deve essere abilitato CM_PER_I2C2_CLKCTRL;
-     */
-    uint32_t * CM_PER_I2C2_CLKCTRL = (uint32_t *)0x44E00044;
-    (*CM_PER_I2C2_CLKCTRL) = 2;
-
     struct pru_rpmsg_transport transport;
     unsigned short src, dst, len;
     volatile unsigned char *status;
@@ -167,15 +277,6 @@ int main(void)
     while (pru_rpmsg_channel(RPMSG_NS_CREATE, &transport, CHAN_NAME, CHAN_DESC,
     CHAN_PORT) != PRU_RPMSG_SUCCESS)
         ;
-
-    struct EcapData
-    {
-        char cmd[8];
-        uint32_t reg1;
-        uint32_t reg2;
-        uint32_t reg3;
-        uint32_t reg4;
-    };
     uint32_t counter = 0;
     uint32_t cycles = 2000000;
 
@@ -183,12 +284,25 @@ int main(void)
     uint32_t ticks = 0;
     uint32_t maxTicks = 20000000;
 
-    struct EcapData *result = (struct EcapData *) payload;
     strcpy(result->cmd, "DATA");
 
     uint8_t active = 0;
 
-    CT_I2C2.I2C_CON_bit.I2C_CON_I2C_EN = 0b0; // i2c reset
+    /**************************************************************
+     * C O N F I G U R A Z I O N E   I 2 C 2   A N D   C L O C K S
+     **************************************************************/
+    uint32_t * CM_PER_L4LS_CLKSTCTRL = (uint32_t *)0x44E00000;
+    (*CM_PER_L4LS_CLKSTCTRL) = ((*CM_PER_L4LS_CLKSTCTRL) | (1 << CLKACTIVITY_I2C_FCLK) | (1 << CLKACTIVITY_L4LS_GCLK)) & 0xFFFFFFFC; // CLKTRCTRL = 0x00
+
+    /*
+     * FROM: https://e2e.ti.com/support/arm/sitara_arm/f/791/p/458311/1659097
+     * deve essere abilitato CM_PER_I2C2_CLKCTRL;
+     */
+    uint32_t * CM_PER_I2C2_CLKCTRL = (uint32_t *)0x44E00044;
+    (*CM_PER_I2C2_CLKCTRL) = 2;
+
+//    CT_I2C2.I2C_CON_bit.I2C_CON_I2C_EN = 0b0; // i2c reset
+    CT_I2C2.I2C_SYSC_bit.I2C_SYSC_SRST = 0b1; // SoftReset Normal Mode
     // wait for reset completed
     ticks = 0;
     while(!CT_I2C2.I2C_SYSS_bit.I2C_SYSS_RDONE) {
@@ -198,44 +312,24 @@ int main(void)
         }
     }
 
-    // prescaler
-    CT_I2C2.I2C_PSC = 0x02; // 24MHz
-    /*
-     * tLow = (SCLL +7)*42ns
-     * 42ns is the time period at 24MHz,
-     * tLow = (1000000000ns/400000Hz)/2) is the time period (in ns) at low signal on SCL
-     * SCLL = tLow/42ns -7
-     * SCLL = 1250/42 -7
-     * SCLL is like 23 (rounded)
-     */
-    CT_I2C2.I2C_SCLL = 0x17;
-    /*
-     * tHigh = (SCLH +5)*42ns
-     * 42ns is the time period at 24MHz,
-     * tHigh = (1000000000ns/400000Hz)/2) is the time period (in ns) at high signal on SCL
-     * SCLH = tHigh/42ns -5
-     * SCLH = 1250/42 -5
-     * SCLH is like 25 (rounded)
-     */
-    CT_I2C2.I2C_SCLH = 0x19;
-
-
     // SYSC system control register
     CT_I2C2.I2C_SYSC_bit.I2C_SYSC_AUTOIDLE = 0b0; // AutoIdle disabled
-    CT_I2C2.I2C_SYSC_bit.I2C_SYSC_SRST = 0b0; // SoftReset Normal Mode
     CT_I2C2.I2C_SYSC_bit.I2C_SYSC_ENAWAKEUP = 0b0; // wakeup disabled
     CT_I2C2.I2C_SYSC_bit.I2C_SYSC_IDLEMODE = 0b01; // no idleMode
     CT_I2C2.I2C_SYSC_bit.I2C_SYSC_CLKACTIVITY = 0b11; // active clocks: interface ocp clock and functional system clock
+
+//    set400KHz();
+    set100KHz();
+
 
     // I2C_BUF as default: DMA disabled and buffer tx/rx lenght = 1
 
     // I2C_OA Own Address register
     // must be set?
-    CT_I2C2.I2C_OA_bit.I2C_OA_OA = 0b0000100010; // address 0x22
+    // CT_I2C2.I2C_OA_bit.I2C_OA_OA = 0b0000100010; // address 0x22
 
 
     // i2c2 master mode
-    CT_I2C2.I2C_CON_bit.I2C_CON_MST = 0b1; // master mode
     CT_I2C2.I2C_CON_bit.I2C_CON_I2C_EN = 0b1; // i2c enabled
 
     // TODO: configurare i pins per i2c2
@@ -255,16 +349,7 @@ int main(void)
                 }
                 else
                 {
-                    uint32_t m1 = CT_INTC.REVID;
-                    uint32_t m2 = *CM_PER_I2C2_CLKCTRL;
-                    uint32_t m3 = CT_I2C2.I2C_REVNB_HI;
-                    uint32_t m4 = 1400;
-
                     strcpy(result->cmd, "DATAKO");
-                    result->reg1 = m1;
-                    result->reg2 = m2;
-                    result->reg3 = m3;
-                    result->reg4 = m4;
                     pru_rpmsg_send(&transport, dst, src, payload,
                                    sizeof(struct EcapData));
                 }
