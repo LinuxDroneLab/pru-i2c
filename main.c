@@ -186,11 +186,7 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
         }
         buffer[count] = CT_I2C2.I2C_DATA;
         // require next data
-        CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 0b1;
-        if (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR)
-        {
-            break;
-        }
+//        CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 0b1;
         uint32_t i = 0;
         for (i = 0; i < 20000; i++)
             ; // wait 1us
@@ -202,7 +198,7 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
     result->reg[6] = CT_I2C2.I2C_IRQSTATUS_RAW;
     result->reg[7] = CT_I2C2.I2C_CON;
 
-    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF = 0x1; // free bus?
+//    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF = 0x1; // free bus?
     // wait for access ready
     ticks = 0;
     while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY)
@@ -214,10 +210,28 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
         }
     }
 
-    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = 0; // bytes
-    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
-    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
+    // wait fo bus free
+    ticks = 0;
+    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF)
+    {
+        ticks++;
+        if (ticks > maxTicks)
+        {
+            return 0;
+        }
+    }
 
+//    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = 0; // bytes
+//    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
+//    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
+
+    { // delay
+        uint32_t i = 0;
+        for (i = 0; i < 200000; i++)
+            ; // wait 1us
+
+    }
+    result->reg[4] = 0x74;
     return count;
 }
 
