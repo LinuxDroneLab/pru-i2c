@@ -91,6 +91,13 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
     result->reg[3] = CT_I2C2.I2C_BUFSTAT;
     result->reg[4] = 0x6F;
 
+    {
+        uint32_t i = 0;
+        for (i = 0; i < 20000; i++)
+            ; // wait 1us
+
+    }
+
     // poll for XRDY = 1 ? clear XRDY?
     ticks = 0;
     while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY)
@@ -117,53 +124,42 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
             return 0;
         }
     }
+
+    {
+        uint32_t i = 0;
+        for (i = 0; i < 20000; i++)
+            ; // wait 1us
+
+    }
+
     // debug
     result->reg[0] = CT_I2C2.I2C_CNT;
     result->reg[1] = CT_I2C2.I2C_CON;
     result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
     result->reg[3] = CT_I2C2.I2C_BUFSTAT;
     result->reg[4] = 0x70;
-
-    /*
-     * Da analizzare: 26/02/2018
-     * Sizeof struct: 40
-     * Message received from PRU:DATAOK, reg1-0x3, reg2-0x8403, reg3-0x1014, reg4-0x8003, reg5-0x73, reg6-0x3, reg7-0x11c, reg8-0x37
-     * Message received from PRU:DATAKO, reg1-0x1, reg2-0x8600, reg3-0x11c, reg4-0x8000, reg5-0x70, reg6-0x0, reg7-0x0, reg8-0x0
-     * NOTA: reg2-0x8600 (dovrebbe essere 0x8601)
-     * Qualcosa non va nella inizializzazione del ciclo. Riporta anche valori precedenti degli interrupt (vedi reg3 = reg7)
-     */
-
-//    ticks = 0;
-//    while (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB
-//            & CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF)
-//    {
-//        ticks++;
-//        if (ticks > maxTicks)
-//        {
-//            return 0;
-//        }
+    if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK) {
+        return 0;
+    }
+//    if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB && CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF) {
+//        return 0;
 //    }
-
-    // 16793856 - uint32_t m1 = (*CM_PER_L4LS_CLKSTCTRL);
-    // debug
-    result->reg[0] = CT_I2C2.I2C_CNT;
-    result->reg[1] = CT_I2C2.I2C_CON;
-    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
-    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
-    result->reg[4] = 0x71;
-
-    // FIXME: qui mi arriva un nack?
 
     // read data
     CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = bytes; // bytes
 //    CT_I2C2.I2C_SA_bit.I2C_SA_SA = address;
-//    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b0; //
 //    CT_I2C2.I2C_CON_bit.I2C_CON_MST = 0b1; // master mode
 //    CT_I2C2.I2C_CON_bit.I2C_CON_TRX = 0b0; // receiver mode
-//    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b0; // Stop condition not required
+//    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b1; // Stop condition required
 //    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b1; // Start condition (this is a repeated start)
     CT_I2C2.I2C_CON = 0x8403;
 
+    {
+        uint32_t i = 0;
+        for (i = 0; i < 20000; i++)
+            ; // wait 1us
+
+    }
     // debug
     result->reg[0] = CT_I2C2.I2C_CNT;
     result->reg[1] = CT_I2C2.I2C_CON;
@@ -186,10 +182,18 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
         }
         buffer[count] = CT_I2C2.I2C_DATA;
         // require next data
-//        CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 0b1;
+        CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 0b1;
         uint32_t i = 0;
         for (i = 0; i < 20000; i++)
             ; // wait 1us
+        if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK) {
+            result->reg[0] = CT_I2C2.I2C_CNT;
+            result->reg[1] = CT_I2C2.I2C_CON;
+            result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
+            result->reg[3] = CT_I2C2.I2C_BUFSTAT;
+            result->reg[4] = count;
+            return 0;
+        }
     }
 
     // debug
@@ -197,6 +201,9 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
     result->reg[5] = CT_I2C2.I2C_CNT;
     result->reg[6] = CT_I2C2.I2C_IRQSTATUS_RAW;
     result->reg[7] = CT_I2C2.I2C_CON;
+    if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK) {
+        return 0;
+    }
 
 //    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF = 0x1; // free bus?
     // wait for access ready
@@ -225,13 +232,7 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 //    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
 //    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
 
-    { // delay
-        uint32_t i = 0;
-        for (i = 0; i < 200000; i++)
-            ; // wait 1us
-
-    }
-    result->reg[4] = 0x74;
+    result->reg[4] = 0x7D;
     return count;
 }
 
@@ -248,7 +249,7 @@ int testConnection()
 void set400KHz()
 {
     // prescaler
-    CT_I2C2.I2C_PSC = 0x02; // 24MHz
+    CT_I2C2.I2C_PSC = 0x04; // 24MHz
     /*
      * tLow = (SCLL +7)*42ns
      * 42ns is the time period at 24MHz,
@@ -257,7 +258,7 @@ void set400KHz()
      * SCLL = 1250/42 -7
      * SCLL is like 23 (rounded)
      */
-    CT_I2C2.I2C_SCLL = 0x17;
+    CT_I2C2.I2C_SCLL = 0x12;
     /*
      * tHigh = (SCLH +5)*42ns
      * 42ns is the time period at 24MHz,
@@ -266,7 +267,7 @@ void set400KHz()
      * SCLH = 1250/42 -5
      * SCLH is like 25 (rounded)
      */
-    CT_I2C2.I2C_SCLH = 0x19;
+    CT_I2C2.I2C_SCLH = 0x14;
 }
 
 void set100KHz()
@@ -384,6 +385,15 @@ int main(void)
 
     // i2c2 master mode
     CT_I2C2.I2C_CON_bit.I2C_CON_I2C_EN = 0b1; // i2c enabled
+    ticks = 0;
+    while (!CT_I2C2.I2C_SYSS_bit.I2C_SYSS_RDONE)
+    {
+        ticks++;
+        if (ticks > maxTicks)
+        {
+            break; // stica ...
+        }
+    }
 
     // TODO: configurare i pins per i2c2
     while (1)
