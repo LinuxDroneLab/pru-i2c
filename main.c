@@ -13,7 +13,6 @@ volatile register unsigned __R31;
 #define CLKACTIVITY_I2C_FCLK            24
 #define CLKACTIVITY_L4LS_GCLK           8
 
-
 struct EcapData
 {
     char cmd[8];
@@ -23,24 +22,34 @@ struct EcapData
 unsigned char payload[RPMSG_BUF_SIZE];
 struct EcapData *result = (struct EcapData *) payload;
 
-uint8_t buffer[6] = {'A','B','C','D','E', 0 };
+uint8_t buffer[6] = { 'A', 'B', 'C', 'D', 'E', 0 };
 
 int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 {
 
     {
         int i = 0;
-        for(i = 0; i < 8; i++) {
+        for (i = 0; i < 8; i++)
+        {
             result->reg[i] = 0;
         }
     }
     uint32_t ticks = 0;
     uint32_t maxTicks = 20000000;
 
+    // debug
+    result->reg[0] = CT_I2C2.I2C_CNT;
+    result->reg[1] = CT_I2C2.I2C_CON;
+    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
+    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
+    result->reg[4] = 0x6E;
+
     // TODO poll low for BB in I2C_IRQSTATUS_RAW
-    while(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB) {
+    while (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB)
+    {
         ticks++;
-        if(ticks > maxTicks) {
+        if (ticks > maxTicks)
+        {
             return 0;
         }
     }
@@ -64,8 +73,8 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
      *
      */
 
-    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
-    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
+//    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
+//    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
 
     CT_I2C2.I2C_SA_bit.I2C_SA_SA = address; // 7 bit address
     CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = 1; // devo inviare reg (1 byte)
@@ -84,9 +93,11 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 
     // poll for XRDY = 1 ? clear XRDY?
     ticks = 0;
-    while(!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY) {
+    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY)
+    {
         ticks++;
-        if(ticks > maxTicks) {
+        if (ticks > maxTicks)
+        {
             return 0;
         }
     }
@@ -98,9 +109,11 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 
     // wait for access ready
     ticks = 0;
-    while(!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY) {
+    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY)
+    {
         ticks++;
-        if(ticks > maxTicks) {
+        if (ticks > maxTicks)
+        {
             return 0;
         }
     }
@@ -120,14 +133,16 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
      * Qualcosa non va nella inizializzazione del ciclo. Riporta anche valori precedenti degli interrupt (vedi reg3 = reg7)
      */
 
-
-    if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK) {
-        CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK = 0x1;
-    }
-    if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF) {
-        CT_I2C2.I2C_SYSC_bit.I2C_SYSC_SRST = 0b1; // SoftReset Normal Mode
-        return 0;
-    }
+//    ticks = 0;
+//    while (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB
+//            & CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF)
+//    {
+//        ticks++;
+//        if (ticks > maxTicks)
+//        {
+//            return 0;
+//        }
+//    }
 
     // 16793856 - uint32_t m1 = (*CM_PER_L4LS_CLKSTCTRL);
     // debug
@@ -137,7 +152,6 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
     result->reg[3] = CT_I2C2.I2C_BUFSTAT;
     result->reg[4] = 0x71;
 
-
     // FIXME: qui mi arriva un nack?
 
     // read data
@@ -146,42 +160,63 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 //    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b0; //
 //    CT_I2C2.I2C_CON_bit.I2C_CON_MST = 0b1; // master mode
 //    CT_I2C2.I2C_CON_bit.I2C_CON_TRX = 0b0; // receiver mode
-//    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b1; // Stop condition required
+//    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b0; // Stop condition not required
 //    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b1; // Start condition (this is a repeated start)
-      CT_I2C2.I2C_CON = 0x8403;
+    CT_I2C2.I2C_CON = 0x8403;
 
-      // debug
-      result->reg[0] = CT_I2C2.I2C_CNT;
-      result->reg[1] = CT_I2C2.I2C_CON;
-      result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
-      result->reg[3] = CT_I2C2.I2C_BUFSTAT;
-      result->reg[4] = 0x72;
+    // debug
+    result->reg[0] = CT_I2C2.I2C_CNT;
+    result->reg[1] = CT_I2C2.I2C_CON;
+    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
+    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
+    result->reg[4] = 0x72;
 
     uint8_t count;
-    for(count = 0; count < bytes; count++ ) {
+    for (count = 0; count < bytes; count++)
+    {
         // wait data
         ticks = 0;
-        while(!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY) {
+        while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY)
+        {
             ticks++;
-            if(ticks > maxTicks) {
+            if (ticks > maxTicks)
+            {
                 return 0;
             }
         }
         buffer[count] = CT_I2C2.I2C_DATA;
         // require next data
         CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 0b1;
-        if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR) {
+        if (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR)
+        {
             break;
         }
         uint32_t i = 0;
-        for(i = 0; i < 20000; i++); // wait 1us
+        for (i = 0; i < 20000; i++)
+            ; // wait 1us
     }
 
     // debug
     result->reg[4] = 0x73;
     result->reg[5] = CT_I2C2.I2C_CNT;
     result->reg[6] = CT_I2C2.I2C_IRQSTATUS_RAW;
-    result->reg[7] = CT_I2C2.I2C_SCLH;
+    result->reg[7] = CT_I2C2.I2C_CON;
+
+    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF = 0x1; // free bus?
+    // wait for access ready
+    ticks = 0;
+    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY)
+    {
+        ticks++;
+        if (ticks > maxTicks)
+        {
+            return 0;
+        }
+    }
+
+    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = 0; // bytes
+    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
+    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
 
     return count;
 }
@@ -196,7 +231,8 @@ int testConnection()
     return 0;
 }
 
-void set400KHz() {
+void set400KHz()
+{
     // prescaler
     CT_I2C2.I2C_PSC = 0x02; // 24MHz
     /*
@@ -219,7 +255,8 @@ void set400KHz() {
     CT_I2C2.I2C_SCLH = 0x19;
 }
 
-void set100KHz() {
+void set100KHz()
+{
     // prescaler
     CT_I2C2.I2C_PSC = 0x04; // 12MHz
     /*
@@ -291,23 +328,27 @@ int main(void)
     /**************************************************************
      * C O N F I G U R A Z I O N E   I 2 C 2   A N D   C L O C K S
      **************************************************************/
-    uint32_t * CM_PER_L4LS_CLKSTCTRL = (uint32_t *)0x44E00000;
-    (*CM_PER_L4LS_CLKSTCTRL) = ((*CM_PER_L4LS_CLKSTCTRL) | (1 << CLKACTIVITY_I2C_FCLK) | (1 << CLKACTIVITY_L4LS_GCLK)) & 0xFFFFFFFC; // CLKTRCTRL = 0x00
+    uint32_t * CM_PER_L4LS_CLKSTCTRL = (uint32_t *) 0x44E00000;
+    (*CM_PER_L4LS_CLKSTCTRL) = ((*CM_PER_L4LS_CLKSTCTRL)
+            | (1 << CLKACTIVITY_I2C_FCLK) | (1 << CLKACTIVITY_L4LS_GCLK))
+            & 0xFFFFFFFC; // CLKTRCTRL = 0x00
 
     /*
      * FROM: https://e2e.ti.com/support/arm/sitara_arm/f/791/p/458311/1659097
      * deve essere abilitato CM_PER_I2C2_CLKCTRL;
      */
-    uint32_t * CM_PER_I2C2_CLKCTRL = (uint32_t *)0x44E00044;
+    uint32_t * CM_PER_I2C2_CLKCTRL = (uint32_t *) 0x44E00044;
     (*CM_PER_I2C2_CLKCTRL) = 2;
 
 //    CT_I2C2.I2C_CON_bit.I2C_CON_I2C_EN = 0b0; // i2c reset
     CT_I2C2.I2C_SYSC_bit.I2C_SYSC_SRST = 0b1; // SoftReset Normal Mode
     // wait for reset completed
     ticks = 0;
-    while(!CT_I2C2.I2C_SYSS_bit.I2C_SYSS_RDONE) {
+    while (!CT_I2C2.I2C_SYSS_bit.I2C_SYSS_RDONE)
+    {
         ticks++;
-        if(ticks > maxTicks) {
+        if (ticks > maxTicks)
+        {
             break; // stica ...
         }
     }
@@ -316,18 +357,16 @@ int main(void)
     CT_I2C2.I2C_SYSC_bit.I2C_SYSC_AUTOIDLE = 0b0; // AutoIdle disabled
     CT_I2C2.I2C_SYSC_bit.I2C_SYSC_ENAWAKEUP = 0b0; // wakeup disabled
     CT_I2C2.I2C_SYSC_bit.I2C_SYSC_IDLEMODE = 0b01; // no idleMode
-    CT_I2C2.I2C_SYSC_bit.I2C_SYSC_CLKACTIVITY = 0b11; // active clocks: interface ocp clock and functional system clock
+    CT_I2C2.I2C_SYSC_bit.I2C_SYSC_CLKACTIVITY = 0b00; // active clocks: interface ocp clock and functional system clock
 
 //    set400KHz();
-    set100KHz();
-
+    set400KHz();
 
     // I2C_BUF as default: DMA disabled and buffer tx/rx lenght = 1
 
     // I2C_OA Own Address register
     // must be set?
     // CT_I2C2.I2C_OA_bit.I2C_OA_OA = 0b0000100010; // address 0x22
-
 
     // i2c2 master mode
     CT_I2C2.I2C_CON_bit.I2C_CON_I2C_EN = 0b1; // i2c enabled
@@ -390,23 +429,23 @@ int main(void)
  *
  * Finally I got it working. The whole procedure for I2C polling mode is a bit different than described in TRM, so may be this information is useful for somebody:
 
-Initialisation:
+ Initialisation:
 
-- set up correct PIN-muxing
-- set up I2C1 module clock
-- disable I2C by clearing EN-bit in register I2C_CON
-- disable auto-idle mode by clearing bit AUTOIDLE in register I2C_SYSC
-- set the I2C clock to 400 kHz
-- set slave-address 0x0F (so left-shift the real address of 0x1E by one!) by writing it into register I2C_SA <---- cosa fa? sembra errato!
-- enable I2C by setting EN-bit in register I2C_CON
+ - set up correct PIN-muxing
+ - set up I2C1 module clock
+ - disable I2C by clearing EN-bit in register I2C_CON
+ - disable auto-idle mode by clearing bit AUTOIDLE in register I2C_SYSC
+ - set the I2C clock to 400 kHz
+ - set slave-address 0x0F (so left-shift the real address of 0x1E by one!) by writing it into register I2C_SA <---- cosa fa? sembra errato!
+ - enable I2C by setting EN-bit in register I2C_CON
 
-Then transmission is done this way:
+ Then transmission is done this way:
 
-- set the number of bytes (3) to be transferred by writing them into register I2C_CNT
-- initiate for transfer by writing bits STP, TRX and MST into register I2C_CON
-- add bit STT in register I2C_CON
-- now in a loop until all three bytes have been sent:
-- wait until bit XRDY in register I2C_IRQSTATUS_RAW is set
-- write next data byte to be transmitted into register I2C_DATA
-- write a 1 into bit XRDY in register I2C_IRQSTATUS_RAW to clear the XRDY state
+ - set the number of bytes (3) to be transferred by writing them into register I2C_CNT
+ - initiate for transfer by writing bits STP, TRX and MST into register I2C_CON
+ - add bit STT in register I2C_CON
+ - now in a loop until all three bytes have been sent:
+ - wait until bit XRDY in register I2C_IRQSTATUS_RAW is set
+ - write next data byte to be transmitted into register I2C_DATA
+ - write a 1 into bit XRDY in register I2C_IRQSTATUS_RAW to clear the XRDY state
  */
