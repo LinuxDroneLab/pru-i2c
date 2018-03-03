@@ -23,7 +23,8 @@ unsigned char payload[RPMSG_BUF_SIZE];
 struct EcapData *result = (struct EcapData *) payload;
 
 uint8_t buffer[6] = { 'A', 'B', 'C', 'D', 'E', 0 };
-
+uint16_t delay = 2400;
+uint32_t mark = 0x21;
 int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 {
 
@@ -98,8 +99,8 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 
     {
         uint32_t i = 0;
-        for (i = 0; i < 20000; i++)
-            ; // wait 1us
+        for (i = 0; i < delay; i++)
+            ; // wait 24us
 
     }
 
@@ -117,12 +118,7 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 
     // write register to read
     CT_I2C2.I2C_DATA = reg;
-    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 0x1;
-    {
-        uint32_t i = 0;
-        for (i = 0; i < 2000; i++)
-            ; // wait 0.1us
-    }
+    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 0b1;
 
     // wait for access ready
     ticks = 0;
@@ -133,6 +129,11 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
         {
             return 0;
         }
+    }
+    {
+        uint32_t i = 0;
+        for (i = 0; i < 920; i++)
+            ; // wait 10us
     }
 
     // debug
@@ -154,11 +155,11 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
 //    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b1; // Start condition (this is a repeated start)
     CT_I2C2.I2C_CON = 0x8403;
 
-    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY = 1;
+    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY = 0b1;
     {
         uint32_t i = 0;
-        for (i = 0; i < 20000; i++)
-            ; // wait 1us
+        for (i = 0; i < delay; i++)
+            ; // wait 24us
 
     }
     // debug
@@ -186,9 +187,6 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
         CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 0b1;
 
         while(!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY);
-//        uint32_t i = 0;
-//        for (i = 0; i < 20000; i++)
-//            ; // wait 1us
 
         if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK) {
             result->reg[0] = CT_I2C2.I2C_CNT;
@@ -232,6 +230,7 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
         }
     }
 
+      CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY = 0b1;
 //    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = 0; // bytes
 //    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
 //    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
@@ -239,7 +238,7 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
     CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 1;
     CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 1;
     CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY = 1;
-    result->reg[4] = 0x80;
+    result->reg[4] = mark;
     return count;
 }
 
@@ -256,7 +255,7 @@ int testConnection()
 void set400KHz()
 {
     // prescaler
-    CT_I2C2.I2C_PSC = 0x04; // 24MHz
+    CT_I2C2.I2C_PSC = 0x02; // 24MHz
     /*
      * tLow = (SCLL +7)*42ns
      * 42ns is the time period at 24MHz,
@@ -265,7 +264,7 @@ void set400KHz()
      * SCLL = 1250/42 -7
      * SCLL is like 23 (rounded)
      */
-    CT_I2C2.I2C_SCLL = 0x12;
+    CT_I2C2.I2C_SCLL = 0x17;
     /*
      * tHigh = (SCLH +5)*42ns
      * 42ns is the time period at 24MHz,
@@ -274,7 +273,7 @@ void set400KHz()
      * SCLH = 1250/42 -5
      * SCLH is like 25 (rounded)
      */
-    CT_I2C2.I2C_SCLH = 0x14;
+    CT_I2C2.I2C_SCLH = 0x19;
 }
 
 void set100KHz()
