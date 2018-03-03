@@ -6,6 +6,8 @@
 #include <rsc_types.h>
 #include "pru_virtio_ids.h"
 
+#define MAX_CYCLES_WAITING 20000000
+
 /*
  * ECAP
  */

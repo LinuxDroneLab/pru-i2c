@@ -2,110 +2,60 @@
 #include <pru_cfg.h>
 #include <pru_intc.h>
 #include <pru_rpmsg.h>
-#include <string.h>
 #include "pru_i2c.h"
 #include "resource_table.h"
 #include "HMC5883L.h"
+#include "MPU6050.h"
 
 volatile register unsigned __R31;
 
 #define VIRTIO_CONFIG_S_DRIVER_OK       4
 #define CLKACTIVITY_I2C_FCLK            24
 #define CLKACTIVITY_L4LS_GCLK           8
-
-struct EcapData
-{
-    char cmd[8];
-    uint32_t reg[8];
-};
+#define PAYLOAD_CONTENT_OFFSET          2
 
 unsigned char payload[RPMSG_BUF_SIZE];
-struct EcapData *result = (struct EcapData *) payload;
 
-uint8_t buffer[6] = { 'A', 'B', 'C', 'D', 'E', 0 };
-uint16_t delay = 2400;
-uint32_t mark = 0x21;
-int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
+inline void delayMicros(uint8_t micros)
 {
-
+    uint16_t cycles = micros * 100;
+    uint16_t i = 0;
+    for (i = 0; i < cycles; i++)
     {
-        int i = 0;
-        for (i = 0; i < 8; i++)
-        {
-            result->reg[i] = 0;
-        }
-        for(i = 0; i < 5; i++) {
-            buffer[i] = 'Z';
-        }
-        buffer[5] = '\0';
-    }
+    };
+}
 
+uint32_t ticks = 0;
+uint32_t maxTicks = 100000000;
+inline uint8_t waitBB()
+{
     uint32_t ticks = 0;
-    uint32_t maxTicks = 20000000;
-
-    // debug
-    result->reg[0] = CT_I2C2.I2C_CNT;
-    result->reg[1] = CT_I2C2.I2C_CON;
-    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
-    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
-    result->reg[4] = 0x6E;
-
-    // TODO poll low for BB in I2C_IRQSTATUS_RAW
     while (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BB)
     {
         ticks++;
-        if (ticks > maxTicks)
+        if (ticks > MAX_CYCLES_WAITING)
         {
             return 0;
         }
     }
-
-    /*
-     * send reg
-     * set  I2C_CON: STT / I2C_CON: STP
-     * Note: DCOUNT is data count value in I2C_CNT register.
-     * STT = 1, STP = 0, Conditions = Start, Bus Activities = S-A-D.
-     * STT = 0, STP = 1, Conditions = Stop, Bus Activities = P.
-     * STT = 1, STP = 1, Conditions = Start-Stop (DCOUNT=n), Bus Activities = S-A-D..(n)..D-P.
-     * STT = 1, STP = 0, Conditions = Start (DCOUNT=n), Bus Activities = S-A-D..(n)..D.
-     * 0h = No action or start condition detected
-     * 1h = Start condition queried
-     *
-     * FROM: http://processors.wiki.ti.com/index.php/StarterWare_HSI2C
-     * EXAMPLES: http://processors.wiki.ti.com/index.php/StarterWare_02.00.01.01_User_Guide#HSI2C
-     *
-     * Before Configuring the I2C configuration and DataCount register make sure that I2C registers are ready for access by polling the Access ready bit of IRQ RAW status register
-     * Finally the data transfer is started by commanding a START on the bus using I2CMasterStart()
-     *
-     */
-
-//    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
-//    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
-
-    CT_I2C2.I2C_SA_bit.I2C_SA_SA = address; // 7 bit address
-    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = 1; // devo inviare reg (1 byte)
-//    CT_I2C2.I2C_CON_bit.I2C_CON_MST = 0b1; // master mode
-//    CT_I2C2.I2C_CON_bit.I2C_CON_TRX = 0b1; // transmitter mode
-//    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b0; // Stop condition not required
-//    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b1; // Start condition <-- qui parte la comunicazione
-    CT_I2C2.I2C_CON = 0x8601;
-
-    // debug
-    result->reg[0] = CT_I2C2.I2C_CNT;
-    result->reg[1] = CT_I2C2.I2C_CON;
-    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
-    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
-    result->reg[4] = 0x6F;
-
+    return 1;
+}
+inline uint8_t waitBF()
+{
+    uint32_t ticks = 0;
+    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF)
     {
-        uint32_t i = 0;
-        for (i = 0; i < delay; i++)
-            ; // wait 24us
-
+        ticks++;
+        if (ticks > MAX_CYCLES_WAITING)
+        {
+            return 0;
+        }
     }
-
-    // poll for XRDY = 1 ? clear XRDY?
-    ticks = 0;
+    return 1;
+}
+uint8_t waitXRDY()
+{
+    uint32_t ticks = 0;
     while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY)
     {
         ticks++;
@@ -114,140 +64,218 @@ int readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
             return 0;
         }
     }
-    // qui XRDY = 1
+    return 1;
+}
+uint8_t waitRRDY()
+{
+    uint32_t ticks = 0;
+    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY)
+    {
+        ticks++;
+        if (ticks > maxTicks)
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+uint8_t waitARDY()
+{
+    uint32_t ticks = 0;
+    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY)
+    {
+        ticks++;
+        if (ticks > maxTicks)
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
 
+void initBuffers()
+{
+    {
+        int i = 0;
+        for (i = 0; i < RPMSG_BUF_SIZE; i++)
+        {
+            payload[i] = '\0';
+        }
+    }
+}
+
+uint8_t readBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
+{
+
+    if (!waitBB())
+    {
+        return 0;
+    }
+
+    CT_I2C2.I2C_SA_bit.I2C_SA_SA = address; // 7 bit address
+    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = 1; // 1 byte to transmit
+    CT_I2C2.I2C_CON = 0x8601; // MST/TRX/STT
+    delayMicros(7);
+
+    if (!waitXRDY())
+    {
+        return 0;
+    }
     // write register to read
     CT_I2C2.I2C_DATA = reg;
     CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 0b1;
 
-    // wait for access ready
-    ticks = 0;
-    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY)
+    // wait access to registers
+    if (!waitARDY())
     {
-        ticks++;
-        if (ticks > maxTicks)
-        {
-            return 0;
-        }
+        return 0;
     }
-    {
-        uint32_t i = 0;
-        for (i = 0; i < 920; i++)
-            ; // wait 10us
-    }
+    delayMicros(6);
 
-    // debug
-    result->reg[0] = CT_I2C2.I2C_CNT;
-    result->reg[1] = CT_I2C2.I2C_CON;
-    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
-    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
-    result->reg[4] = 0x70;
-    if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK) {
+    if (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR
+            | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK)
+    {
         return 0;
     }
 
     // read data
-    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = bytes; // bytes
-//    CT_I2C2.I2C_SA_bit.I2C_SA_SA = address;
-//    CT_I2C2.I2C_CON_bit.I2C_CON_MST = 0b1; // master mode
-//    CT_I2C2.I2C_CON_bit.I2C_CON_TRX = 0b0; // receiver mode
-//    CT_I2C2.I2C_CON_bit.I2C_CON_STP = 0b1; // Stop condition required
-//    CT_I2C2.I2C_CON_bit.I2C_CON_STT = 0b1; // Start condition (this is a repeated start)
-    CT_I2C2.I2C_CON = 0x8403;
-
+    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = bytes; // bytes to reveive
+    CT_I2C2.I2C_CON = 0x8403; // MST/STP/STT
+    delayMicros(24);
     CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY = 0b1;
-    {
-        uint32_t i = 0;
-        for (i = 0; i < delay; i++)
-            ; // wait 24us
 
+    // wait data
+    if (!waitRRDY())
+    {
+        return 0;
     }
-    // debug
-    result->reg[0] = CT_I2C2.I2C_CNT;
-    result->reg[1] = CT_I2C2.I2C_CON;
-    result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
-    result->reg[3] = CT_I2C2.I2C_BUFSTAT;
-    result->reg[4] = 0x72;
 
     uint8_t count;
     for (count = 0; count < bytes; count++)
     {
-        // wait data
-        ticks = 0;
-        while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY)
-        {
-            ticks++;
-            if (ticks > maxTicks)
-            {
-                return 0;
-            }
-        }
+        // read byte
         buffer[count] = CT_I2C2.I2C_DATA;
+
         // require next data
         CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 0b1;
 
-        while(!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY);
+        // wait data
+        if (!waitRRDY())
+        {
+            return 0;
+        }
+        delayMicros(1);
 
-        if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK) {
-            result->reg[0] = CT_I2C2.I2C_CNT;
-            result->reg[1] = CT_I2C2.I2C_CON;
-            result->reg[2] = CT_I2C2.I2C_IRQSTATUS_RAW;
-            result->reg[3] = CT_I2C2.I2C_BUFSTAT;
-            result->reg[4] = count;
+        if (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR
+                | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK)
+        {
             return 0;
         }
     }
 
-    // debug
-    result->reg[4] = 0x73;
-    result->reg[5] = CT_I2C2.I2C_CNT;
-    result->reg[6] = CT_I2C2.I2C_IRQSTATUS_RAW;
-    result->reg[7] = CT_I2C2.I2C_CON;
-    if(CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK) {
+    // wait for access ready
+    if (!waitARDY())
+    {
+        return 0;
+    }
+    delayMicros(6);
+
+    // wait for bus free
+    // wait data
+    if (!waitBF())
+    {
         return 0;
     }
 
-//    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF = 0x1; // free bus?
-    // wait for access ready
-    ticks = 0;
-    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY)
-    {
-        ticks++;
-        if (ticks > maxTicks)
-        {
-            return 0;
-        }
-    }
-
-    // wait fo bus free
-    ticks = 0;
-    while (!CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_BF)
-    {
-        ticks++;
-        if (ticks > maxTicks)
-        {
-            return 0;
-        }
-    }
-
-      CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY = 0b1;
-//    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = 0; // bytes
-//    CT_I2C2.I2C_BUF_bit.I2C_BUF_TXFIFO_CLR = 0b1; // clear TX FIFO
-//    CT_I2C2.I2C_BUF_bit.I2C_BUF_RXFIFO_CLR = 0b1; // clear RX FIFO
-
+    // serve?
+    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY = 0b1;
     CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 1;
     CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 1;
-    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY = 1;
-    result->reg[4] = mark;
     return count;
+}
+
+uint8_t writeBytes(uint8_t address, uint8_t reg, uint8_t bytes, uint8_t* buffer)
+{
+
+    if (!waitBB())
+    {
+        return 0;
+    }
+
+    CT_I2C2.I2C_SA_bit.I2C_SA_SA = address; // 7 bit address
+    CT_I2C2.I2C_CNT_bit.I2C_CNT_DCOUNT = bytes + 1; // 1 byte to transmit
+    CT_I2C2.I2C_CON = 0x8603; // MST/TRX/STT/STP
+    delayMicros(7);
+
+    if (!waitXRDY())
+    {
+        return 0;
+    }
+    // write register to read
+    CT_I2C2.I2C_DATA = reg;
+    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 0b1;
+    delayMicros(1);
+    if (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR
+            | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK)
+    {
+        return 0;
+    }
+
+    uint8_t count;
+    for (count = 0; count < bytes; count++)
+    {
+        waitXRDY();
+        CT_I2C2.I2C_DATA = buffer[count];
+        CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 0b1;
+        delayMicros(1);
+        if (CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_AERR
+                | CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_NACK)
+        {
+            return 0;
+        }
+    }
+
+    // wait for access ready
+    if (!waitARDY())
+    {
+        return 0;
+    }
+    delayMicros(6);
+
+    // wait for bus free
+    // wait data
+    if (!waitBF())
+    {
+        return 0;
+    }
+
+    // serve?
+    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_ARDY = 0b1;
+    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_XRDY = 1;
+    CT_I2C2.I2C_IRQSTATUS_RAW_bit.I2C_IRQSTATUS_RAW_RRDY = 1;
+    return count;
+}
+
+uint8_t readReg(uint8_t address, uint8_t reg, uint8_t* buffer)
+{
+    return readBytes(address, reg, 1, buffer);
+}
+uint8_t writeReg(uint8_t address, uint8_t reg, uint8_t value)
+{
+    return writeBytes(address, reg, 1, &value);
 }
 
 int testConnection()
 {
-    int nbytes = readBytes(HMC5883L_ADDRESS, HMC5883L_RA_ID_A, 3, buffer);
-    if (nbytes == 3)
+    initBuffers();
+    int nbytes = readBytes(HMC5883L_ADDRESS, HMC5883L_RA_ID_A, 3,
+                           payload + PAYLOAD_CONTENT_OFFSET);
+    if (nbytes == 3
+            && (((payload + PAYLOAD_CONTENT_OFFSET)[0] == 'H'
+                    && (payload + PAYLOAD_CONTENT_OFFSET)[1] == '4'
+                    && (payload + PAYLOAD_CONTENT_OFFSET)[2] == '3')))
     {
-        return (buffer[0] == 'H' && buffer[1] == '4' && buffer[2] == '3');
+        return nbytes;
     }
     return 0;
 }
@@ -300,6 +328,71 @@ void set100KHz()
     CT_I2C2.I2C_SCLH = 0x37;
 }
 
+/**************************************************************************
+ *
+ * C O M P A S S
+ *
+ **************************************************************************/
+/*
+ * bool MyGY86::initCompass() {
+ // TODO: gestire multimaster. Verificare libreria i2c utilizzata per il controllo del bus
+ // questo eviterebbe di switchare continuamente il mastermode
+ setMasterModeEnabled(false);
+ setI2CBypass(true);
+ setGainCompass();
+ setRateAndAverageCompass();
+ setModeCompass();
+ setI2CBypass(false);
+ setMasterModeEnabled(true);
+ return true;
+ }
+
+ setMasterModeEnabled:
+ 1) master mode as parameter
+ 2) other bits as is
+ */
+//uint8_t setMasterModeEnabled(uint8_t enabled) {
+//  uint8_t reg;
+//  uint8_t bytes = readReg(MPU6050_ADDRESS, MPU6050_RA_USER_CTRL, &reg);
+//  if (enabled) {
+//    reg |= (1 << MPU6050_I2C_MST_EN_BIT);
+//  } else {
+//    reg &= ~(1 << MPU6050_I2C_MST_EN_BIT);
+//  }
+//  writeReg(MPU6050_ADDRESS, MPU6050_RA_USER_CTRL, reg);
+//  return 1;
+//}
+uint8_t initHMC5883L()
+{
+    // Single Write
+    uint8_t result = writeReg(HMC5883L_ADDRESS, HMC5883L_RA_CONFIG_A, 0x70);
+    if (result > 0)
+    {
+        result = writeReg(HMC5883L_ADDRESS, HMC5883L_RA_CONFIG_B, 0xE0);
+        if (result > 0)
+        {
+            result = writeReg(HMC5883L_ADDRESS, HMC5883L_RA_MODE, 0x00);
+        }
+    }
+    return result;
+}
+
+uint8_t readHMC5883LData(int16_t* x, int16_t* y, int16_t* z)
+{
+    // HMC5883L_RA_DATAX_H
+    // HMC5883L_RA_DATAX_L
+    uint16_t result[3] = { 0, 0, 0 };
+    if (readBytes(HMC5883L_ADDRESS, HMC5883L_RA_DATAX_H, 6, (uint8_t*) &result)
+            == 6)
+    {
+        *x = result[0];
+        *y = result[1];
+        *z = result[2];
+        return 1;
+    }
+    return 0;
+}
+
 /**
  * main.c
  */
@@ -341,8 +434,6 @@ int main(void)
     // for timeout
     uint32_t ticks = 0;
     uint32_t maxTicks = 20000000;
-
-    strcpy(result->cmd, "DATA");
 
     uint8_t active = 0;
 
@@ -401,7 +492,6 @@ int main(void)
         }
     }
 
-    // TODO: configurare i pins per i2c2
     while (1)
     {
         if (active)
@@ -410,17 +500,28 @@ int main(void)
             counter++;
             if (counter == cycles)
             {
-                if (testConnection())
+                uint8_t bytes = 0;
+                if (bytes = testConnection())
                 {
-                    strcpy(result->cmd, "DATAOK");
+                    payload[0] = 'T';
+                    payload[1] = 'T';
                     pru_rpmsg_send(&transport, dst, src, payload,
-                                   sizeof(struct EcapData));
+                                   bytes + PAYLOAD_CONTENT_OFFSET);
+                    if (initHMC5883L())
+                    {
+                        pru_rpmsg_send(&transport, dst, src, "HTO", 4);
+                    }
+                    else
+                    {
+                        pru_rpmsg_send(&transport, dst, src, "HTK", 4);
+                    }
                 }
                 else
                 {
-                    strcpy(result->cmd, "DATAKO");
+                    payload[0] = 'T';
+                    payload[1] = 'F';
                     pru_rpmsg_send(&transport, dst, src, payload,
-                                   sizeof(struct EcapData));
+                    PAYLOAD_CONTENT_OFFSET);
                 }
             }
         }
@@ -429,21 +530,10 @@ int main(void)
             if (pru_rpmsg_receive(&transport, &src, &dst, payload,
                                   &len) == PRU_RPMSG_SUCCESS)
             {
-                int eq = strncmp("START", (const char *) payload, 5);
-                if (eq == 0)
+                if (payload[0] == 'S' && payload[1] == 'T')
                 {
                     active = 1;
-                    pru_rpmsg_send(&transport, dst, src, "STARTED", 8);
-                }
-                else if (eq < 0)
-                {
-                    active = 0;
-                    pru_rpmsg_send(&transport, dst, src, "MINOR", 6);
-                }
-                else if (eq > 0)
-                {
-                    active = 0;
-                    pru_rpmsg_send(&transport, dst, src, "MAJOR", 6);
+                    pru_rpmsg_send(&transport, dst, src, "ST", 3);
                 }
             }
             else
