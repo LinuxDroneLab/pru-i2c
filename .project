@@ -26,6 +26,14 @@
 	</natures>
 	<variableList>
 		<variable>
+			<name>PRU_SW_HMC5883L</name>
+			<value>file:/hd/eworkspace/pru-hmc5883l-lib</value>
+		</variable>
+		<variable>
+			<name>PRU_SW_I2C</name>
+			<value>file:/hd/eworkspace/pru-i2c-lib</value>
+		</variable>
+		<variable>
 			<name>PRU_SW_PATH</name>
 			<value>file:/hd/linuxlab/beagleboard/ti/pru-software-support-package</value>
 		</variable>
