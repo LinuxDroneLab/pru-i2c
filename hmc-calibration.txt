@@ -1,0 +1,5 @@
+Implementaione atmel 
+https://github.com/eewiki/asf/blob/master/common/services/sensors/drivers/honeywell/hmc5883l.c
+
+Dettagli su come funziona e sulle scale definite
+http://bluelemonlabs.blogspot.it/2013/08/arduino-simple-compass-with-hmc5883l.html

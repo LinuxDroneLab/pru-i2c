@@ -368,7 +368,7 @@ uint8_t initHMC5883L()
     uint8_t result = writeReg(HMC5883L_ADDRESS, HMC5883L_RA_CONFIG_A, 0x70);
     if (result > 0)
     {
-        result = writeReg(HMC5883L_ADDRESS, HMC5883L_RA_CONFIG_B, 0xE0);
+        result = writeReg(HMC5883L_ADDRESS, HMC5883L_RA_CONFIG_B, 0x20);
         if (result > 0)
         {
             result = writeReg(HMC5883L_ADDRESS, HMC5883L_RA_MODE, 0x00);
@@ -377,18 +377,74 @@ uint8_t initHMC5883L()
     return result;
 }
 
-uint8_t readHMC5883LData(int16_t* x, int16_t* y, int16_t* z)
+uint8_t readHMC5883LData(unsigned char* data)
 {
-    // HMC5883L_RA_DATAX_H
-    // HMC5883L_RA_DATAX_L
-    uint16_t result[3] = { 0, 0, 0 };
-    if (readBytes(HMC5883L_ADDRESS, HMC5883L_RA_DATAX_H, 6, (uint8_t*) &result)
-            == 6)
+    uint8_t result = readBytes(HMC5883L_ADDRESS, HMC5883L_RA_DATAX_H, 2,
+                               data + PAYLOAD_CONTENT_OFFSET);
+    if (result == 2)
     {
-        *x = result[0];
-        *y = result[1];
-        *z = result[2];
-        return 1;
+        result += readBytes(HMC5883L_ADDRESS, HMC5883L_RA_DATAY_H, 2,
+                            data + PAYLOAD_CONTENT_OFFSET + 2);
+        if (result == 4)
+        {
+            result += readBytes(HMC5883L_ADDRESS, HMC5883L_RA_DATAZ_H, 2,
+                                data + PAYLOAD_CONTENT_OFFSET + 4);
+        }
+    }
+    if (result == 6)
+    {
+        return result;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+uint8_t selfTestsHMC5883L(unsigned char* data)
+{
+    uint8_t RegModeCurrent;
+    uint8_t RegACurrent;
+    if (readReg(HMC5883L_ADDRESS, HMC5883L_RA_MODE, &RegModeCurrent))
+    {
+        if (readReg(HMC5883L_ADDRESS, HMC5883L_RA_CONFIG_A, &RegACurrent))
+        {
+            if (writeReg(HMC5883L_ADDRESS, HMC5883L_RA_CONFIG_A, 0x12)) // positive test
+            {
+                if (writeReg(HMC5883L_ADDRESS, HMC5883L_RA_MODE, 0x01)) // single mode
+                {
+                    {
+                        uint8_t status;
+                        while(1) {
+                            if(readReg(HMC5883L_ADDRESS, HMC5883L_RA_STATUS, &status)) {
+                                if(!(status & 0x01)) {
+                                    break;
+                                }
+                            }
+                        }
+                        while(1) {
+                            if(readReg(HMC5883L_ADDRESS, HMC5883L_RA_STATUS, &status)) {
+                                if(status & 0x01) {
+                                    if (readHMC5883LData(data))
+                                    {
+                                        if (writeReg(HMC5883L_ADDRESS, HMC5883L_RA_CONFIG_A,
+                                                     RegACurrent))
+                                        {
+                                            if (writeReg(HMC5883L_ADDRESS, HMC5883L_RA_MODE,
+                                                         RegModeCurrent))
+                                            {
+                                                return 1;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
     }
     return 0;
 }
@@ -510,6 +566,32 @@ int main(void)
                     if (initHMC5883L())
                     {
                         pru_rpmsg_send(&transport, dst, src, "HTO", 4);
+                        if (readHMC5883LData(payload))
+                        {
+                            payload[0] = 'H';
+                            payload[1] = 'D';
+                            pru_rpmsg_send(&transport, dst, src, payload, 8);
+                        }
+                        else
+                        {
+                            payload[0] = 'H';
+                            payload[1] = 'F';
+                            payload[1] = 'D';
+                            pru_rpmsg_send(&transport, dst, src, payload, 3);
+                        }
+                        if (selfTestsHMC5883L(payload))
+                        {
+                            payload[0] = 'H';
+                            payload[1] = 'S';
+                            pru_rpmsg_send(&transport, dst, src, payload, 8);
+                        }
+                        else
+                        {
+                            payload[0] = 'H';
+                            payload[1] = 'F';
+                            payload[1] = 'S';
+                            pru_rpmsg_send(&transport, dst, src, payload, 3);
+                        }
                     }
                     else
                     {
