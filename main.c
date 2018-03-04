@@ -66,6 +66,9 @@ int main(void)
 
     uint8_t active = 0;
 
+    if(!pru_i2c_driver_Init()) {
+        return -1;
+    }
 
     while (1)
     {
