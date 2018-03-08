@@ -10,8 +10,6 @@
 volatile register unsigned __R31;
 
 #define VIRTIO_CONFIG_S_DRIVER_OK       4
-#define CLKACTIVITY_I2C_FCLK            24
-#define CLKACTIVITY_L4LS_GCLK           8
 #define PAYLOAD_CONTENT_OFFSET          2
 
 unsigned char payload[RPMSG_BUF_SIZE];
@@ -26,13 +24,30 @@ void initBuffers()
         }
     }
 }
+
+struct pru_rpmsg_transport transport;
+unsigned short src, dst, len;
+
+uint8_t sendData(uint8_t deviceNumber, uint8_t dataBytes, unsigned char* data) {
+    payload[0] = 'H';
+    payload[1] = 'D';
+    pru_rpmsg_send(&transport, dst, src, data - PAYLOAD_CONTENT_OFFSET, dataBytes + PAYLOAD_CONTENT_OFFSET);
+    return 1; // FIXME: da adeguare alla risposta di pru_rpmsg_send
+}
+
+
+uint8_t sendTestData(uint8_t deviceNumber, uint8_t dataBytes, unsigned char* data) {
+    payload[0] = 'H';
+    payload[1] = 'S';
+    pru_rpmsg_send(&transport, dst, src, data - PAYLOAD_CONTENT_OFFSET, dataBytes + PAYLOAD_CONTENT_OFFSET);
+    return 1;
+}
+
 /**
  * main.c
  */
 int main(void)
 {
-    struct pru_rpmsg_transport transport;
-    unsigned short src, dst, len;
     volatile unsigned char *status;
 
     /* Allow OCP master port access by the PRU so the PRU can read external memories */
@@ -66,9 +81,16 @@ int main(void)
 
     uint8_t active = 0;
 
-    if(!pru_i2c_driver_Init()) {
-        return -1;
-    }
+//    if(!pru_i2c_driver_Init()) {
+//        return -1;
+//    }
+
+    HMC5883LConf hmc5883lConf2 = {
+           payload + PAYLOAD_CONTENT_OFFSET,
+           payload + PAYLOAD_CONTENT_OFFSET,
+           sendData,
+           sendTestData
+    };
 
     while (1)
     {
@@ -78,40 +100,31 @@ int main(void)
             counter++;
             if (counter == cycles)
             {
-                if (pru_hmc5883l_driver_TestConnection())
+                if (pru_hmc5883l_driver_Detect(2))
                 {
                     payload[0] = 'T';
                     payload[1] = 'T';
                     pru_rpmsg_send(&transport, dst, src, payload,PAYLOAD_CONTENT_OFFSET);
-                    if (pru_hmc5883l_driver_InitHMC5883L())
+                    if (pru_hmc5883l_driver_Enable(2))
                     {
                         pru_rpmsg_send(&transport, dst, src, "HTO", 4);
-                        if (pru_hmc5883l_driver_ReadHMC5883LData(payload+PAYLOAD_CONTENT_OFFSET))
-                        {
-                            payload[0] = 'H';
-                            payload[1] = 'D';
-                            pru_rpmsg_send(&transport, dst, src, payload, 8);
-                        }
-                        else
-                        {
+                        if(!pru_hmc5883l_driver_Pulse(2)) {
                             payload[0] = 'H';
                             payload[1] = 'F';
                             payload[1] = 'D';
                             pru_rpmsg_send(&transport, dst, src, payload, 3);
                         }
-                        if (pru_hmc5883l_driver_SelfTestsHMC5883L(payload+PAYLOAD_CONTENT_OFFSET))
-                        {
-                            payload[0] = 'H';
-                            payload[1] = 'S';
-                            pru_rpmsg_send(&transport, dst, src, payload, 8);
-                        }
-                        else
-                        {
-                            payload[0] = 'H';
-                            payload[1] = 'F';
-                            payload[1] = 'S';
-                            pru_rpmsg_send(&transport, dst, src, payload, 3);
-                        }
+
+//                        if (pru_hmc5883l_driver_SelfTestsHMC5883L(payload+PAYLOAD_CONTENT_OFFSET))
+//                        {
+//                        }
+//                        else
+//                        {
+//                            payload[0] = 'H';
+//                            payload[1] = 'F';
+//                            payload[1] = 'S';
+//                            pru_rpmsg_send(&transport, dst, src, payload, 3);
+//                        }
                     }
                     else
                     {
@@ -136,6 +149,8 @@ int main(void)
                 {
                     active = 1;
                     pru_rpmsg_send(&transport, dst, src, "ST", 3);
+                    pru_hmc5883l_driver_Conf(2, &hmc5883lConf2);
+
                 }
             }
             else
@@ -146,28 +161,47 @@ int main(void)
     }
 }
 
-/* Procedura di transmitting I2C che dicono funzionare (a me non sembra ...)
- * FROM: https://e2e.ti.com/support/arm/sitara_arm/f/791/p/520841/1893086?pi316653=1#pi316653=1
+/*
+ * Come dovrebbe essere:
+ * DeviceList contiene una lista di deviceId con associato il canale di connessione (i2c1/i2c2)
+ *   Il canale di connessione serve per poter identificare di quale device si tratta
+ *   ad esempio: imu telecamera, imu drone.
+ *   per ora faccio due soli canali (i2c1/i2c2)
  *
- * Finally I got it working. The whole procedure for I2C polling mode is a bit different than described in TRM, so may be this information is useful for somebody:
-
- Initialisation:
-
- - set up correct PIN-muxing
- - set up I2C1 module clock
- - disable I2C by clearing EN-bit in register I2C_CON
- - disable auto-idle mode by clearing bit AUTOIDLE in register I2C_SYSC
- - set the I2C clock to 400 kHz
- - set slave-address 0x0F (so left-shift the real address of 0x1E by one!) by writing it into register I2C_SA <---- cosa fa? sembra errato!
- - enable I2C by setting EN-bit in register I2C_CON
-
- Then transmission is done this way:
-
- - set the number of bytes (3) to be transferred by writing them into register I2C_CNT
- - initiate for transfer by writing bits STP, TRX and MST into register I2C_CON
- - add bit STT in register I2C_CON
- - now in a loop until all three bytes have been sent:
- - wait until bit XRDY in register I2C_IRQSTATUS_RAW is set
- - write next data byte to be transmitted into register I2C_DATA
- - write a 1 into bit XRDY in register I2C_IRQSTATUS_RAW to clear the XRDY state
+ * uint8_t detectDevices(DeviceList* deviceList) {
+ *   detect all devices connected and supported
+ *     detectHMC5833L
+ *     detectMPU6050
+ *     detectBMP085
+ *     i detect sopra devono poter essere invocati anche singolarmente
+ * }
+ *
+ * Nella device list si riporta l'id del device ed un puntatore di struttura del contesto di configurazione ed esecuzione fornito dal driver.
+ * Il main modifica il contesto di esecuzione per fornire:
+ * - buffer in cui inserire i dati letti (per i sensori non è necessario prevedere la scrittura)
+ * - canale di trasmissione dati (rpmsg1/2)
+ * - callback da invocare quando i dati sono stati letti (puntatore di funzione da invocare per eseguire la send_rpmsg)
+ * - invece della callback è possibile usare un flag 'dati pronti' e lasciare la gestione al main (in polling)
+ * - ogni quanto tempo eseguire la calibrazione mediante selftests
+ * - buffer dati e callback (o flag 'dati pronti') per fornire i risultati dei selftests
+ *
+ * il main potrebbe avere ua struttura di questo tipo:
+ * detectDevices(devlist);
+ * configureDevices(devlist);
+ * while(1) {
+ *   device->hmc5833l[0]->pulse(); <-- nota: i sensori sono programmati per fornire dati con una data frequenza. Nient'altro
+ *   device->mpu6050[0]->pulse();
+ *   device->mpu6050[1]->pulse();
+ *   device->bmp085[0]->pulse();
+ *   device->tempSensor[0]->pulse();
+ *   Ogni pulse deve durare il minor tempo possibile.
+ *   Evitare cicli di wait ed usare piùttosto stati di avanzamento (vedi selftests. Richiedono 250 millis per l'esecuzione)
+ * }
+ *
+ * uint8_t sendHMC5833LData(hmc5833l* device) {
+ *   ... send data to ARM with rmpsg
+ * }
+ * uint8_t sendHMC5833LDataError(hmc5833l* device) {
+ *   ... manage error ...
+ * }
  */
