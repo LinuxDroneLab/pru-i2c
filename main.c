@@ -4,6 +4,7 @@
 #include <pru_rpmsg.h>
 #include <pru_i2c_driver.h>
 #include <pru_hmc5883l_driver.h>
+#include <pru_timer_driver.h>
 #include "resource_table.h"
 #include "MPU6050.h"
 
@@ -43,6 +44,42 @@ uint8_t sendTestData(uint8_t deviceNumber, uint8_t dataBytes, unsigned char* dat
     return 1;
 }
 
+uint32_t counter = 0;
+uint32_t cycles = 2000000;
+uint8_t executeTasks() {
+/*
+ * Qui inserire i drivers da gestire e garantire di uscire entro 500us
+ */
+    counter++;
+    counter %= 100;
+    if(!counter) { // eseguo ogni 100 cicli (20Hz) ...
+        if (pru_hmc5883l_driver_Detect(2))
+        {
+            if (pru_hmc5883l_driver_Enable(2))
+            {
+                if(!pru_hmc5883l_driver_Pulse(2)) {
+                    payload[0] = 'H';
+                    payload[1] = 'F';
+                    payload[1] = 'D';
+                    pru_rpmsg_send(&transport, dst, src, payload, 3);
+                }
+            }
+            else
+            {
+                pru_rpmsg_send(&transport, dst, src, "HTK", 4);
+            }
+        }
+        else
+        {
+            payload[0] = 'T';
+            payload[1] = 'F';
+            pru_rpmsg_send(&transport, dst, src, payload,
+            PAYLOAD_CONTENT_OFFSET);
+        }
+    }
+    return 1;
+}
+
 /**
  * main.c
  */
@@ -76,8 +113,6 @@ int main(void)
     while (pru_rpmsg_channel(RPMSG_NS_CREATE, &transport, CHAN_NAME, CHAN_DESC,
     CHAN_PORT) != PRU_RPMSG_SUCCESS)
         ;
-    uint32_t counter = 0;
-    uint32_t cycles = 2000000;
 
     uint8_t active = 0;
 
@@ -88,53 +123,18 @@ int main(void)
            sendTestData
     };
 
+    PruTimerDriverConf pruTimerDriverConf = {
+        executeTasks
+    };
+
     while (1)
     {
         if (active)
         {
-            counter %= cycles;
-            counter++;
-            if (counter == cycles)
-            {
-                if (pru_hmc5883l_driver_Detect(2))
-                {
-                    payload[0] = 'T';
-                    payload[1] = 'T';
-                    pru_rpmsg_send(&transport, dst, src, payload,PAYLOAD_CONTENT_OFFSET);
-                    if (pru_hmc5883l_driver_Enable(2))
-                    {
-                        pru_rpmsg_send(&transport, dst, src, "HTO", 4);
-                        if(!pru_hmc5883l_driver_Pulse(2)) {
-                            payload[0] = 'H';
-                            payload[1] = 'F';
-                            payload[1] = 'D';
-                            pru_rpmsg_send(&transport, dst, src, payload, 3);
-                        }
-
-//                        if (pru_hmc5883l_driver_SelfTestsHMC5883L(payload+PAYLOAD_CONTENT_OFFSET))
-//                        {
-//                        }
-//                        else
-//                        {
-//                            payload[0] = 'H';
-//                            payload[1] = 'F';
-//                            payload[1] = 'S';
-//                            pru_rpmsg_send(&transport, dst, src, payload, 3);
-//                        }
-                    }
-                    else
-                    {
-                        pru_rpmsg_send(&transport, dst, src, "HTK", 4);
-                    }
-                }
-                else
-                {
-                    payload[0] = 'T';
-                    payload[1] = 'F';
-                    pru_rpmsg_send(&transport, dst, src, payload,
-                    PAYLOAD_CONTENT_OFFSET);
-                }
+            if(!pru_timer_driver_Pulse()) {
+                // TODO gestire eventuale errore
             }
+
         }
         if (__R31 & HOST_INT)
         {
@@ -146,6 +146,7 @@ int main(void)
                     active = 1;
                     pru_rpmsg_send(&transport, dst, src, "ST", 3);
                     pru_hmc5883l_driver_Conf(2, &hmc5883lConf2);
+                    pru_timer_driver_Conf(&pruTimerDriverConf);
 
                 }
             }
@@ -156,6 +157,20 @@ int main(void)
         }
     }
 }
+
+/* SELF TESTS
+//                        if (pru_hmc5883l_driver_SelfTestsHMC5883L(payload+PAYLOAD_CONTENT_OFFSET))
+//                        {
+//                        }
+//                        else
+//                        {
+//                            payload[0] = 'H';
+//                            payload[1] = 'F';
+//                            payload[1] = 'S';
+//                            pru_rpmsg_send(&transport, dst, src, payload, 3);
+//                        }
+ *
+ */
 
 /*
  * Come dovrebbe essere:

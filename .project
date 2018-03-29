@@ -37,5 +37,9 @@
 			<name>PRU_SW_PATH</name>
 			<value>file:/hd/linuxlab/beagleboard/ti/pru-software-support-package</value>
 		</variable>
+		<variable>
+			<name>PRU_SW_TIMER</name>
+			<value>file:/hd/eworkspace/pru-timer-lib</value>
+		</variable>
 	</variableList>
 </projectDescription>
