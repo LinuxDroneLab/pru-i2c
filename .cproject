@@ -49,9 +49,10 @@
 									<listOptionValue builtIn="false" value="${PRU_SW_PATH}/include/am335x"/>
 									<listOptionValue builtIn="false" value="${PRU_SW_I2C}/include"/>
 									<listOptionValue builtIn="false" value="${PRU_SW_HMC5883L}/include"/>
-									<listOptionValue builtIn="false" value="${PRU_SW_TIMER}/include"/>
+									<listOptionValue builtIn="false" value="${PRU_SW_MPU6050}/include"/>
 								</option>
 								<option id="com.ti.ccstudio.buildDefinitions.PRU_2.2.compilerID.ENDIAN.1678847635" name="Specify the endianness of both code and data [See 'General' page to edit] (--endian)" superClass="com.ti.ccstudio.buildDefinitions.PRU_2.2.compilerID.ENDIAN" useByScannerDiscovery="false" value="com.ti.ccstudio.buildDefinitions.PRU_2.2.compilerID.ENDIAN.little" valueType="enumerated"/>
+								<option id="com.ti.ccstudio.buildDefinitions.PRU_2.2.compilerID.OPT_FOR_SPEED.1718868078" name="Speed vs. size trade-offs (--opt_for_speed, -mf)" superClass="com.ti.ccstudio.buildDefinitions.PRU_2.2.compilerID.OPT_FOR_SPEED" useByScannerDiscovery="false" value="com.ti.ccstudio.buildDefinitions.PRU_2.2.compilerID.OPT_FOR_SPEED.5" valueType="enumerated"/>
 								<inputType id="com.ti.ccstudio.buildDefinitions.PRU_2.2.compiler.inputType__C_SRCS.36623519" name="C Sources" superClass="com.ti.ccstudio.buildDefinitions.PRU_2.2.compiler.inputType__C_SRCS"/>
 								<inputType id="com.ti.ccstudio.buildDefinitions.PRU_2.2.compiler.inputType__CPP_SRCS.232553574" name="C++ Sources" superClass="com.ti.ccstudio.buildDefinitions.PRU_2.2.compiler.inputType__CPP_SRCS"/>
 								<inputType id="com.ti.ccstudio.buildDefinitions.PRU_2.2.compiler.inputType__ASM_SRCS.2141181269" name="Assembly Sources" superClass="com.ti.ccstudio.buildDefinitions.PRU_2.2.compiler.inputType__ASM_SRCS"/>
@@ -74,7 +75,7 @@
 									<listOptionValue builtIn="false" value="${PRU_SW_I2C}/Debug/pru-i2c-lib.lib"/>
 									<listOptionValue builtIn="false" value="${PRU_SW_PATH}/lib/rpmsg_lib.lib"/>
 									<listOptionValue builtIn="false" value="${PRU_SW_HMC5883L}/Debug/pru-hmc5883l-lib.lib"/>
-									<listOptionValue builtIn="false" value="${PRU_SW_TIMER}/Debug/pru-timer-lib.lib"/>
+									<listOptionValue builtIn="false" value="${PRU_SW_MPU6050}/Debug/pru-mpu6050-lib.lib"/>
 								</option>
 								<inputType id="com.ti.ccstudio.buildDefinitions.PRU_2.2.exeLinker.inputType__CMD_SRCS.411398826" name="Linker Command Files" superClass="com.ti.ccstudio.buildDefinitions.PRU_2.2.exeLinker.inputType__CMD_SRCS"/>
 								<inputType id="com.ti.ccstudio.buildDefinitions.PRU_2.2.exeLinker.inputType__CMD2_SRCS.1067611083" name="Linker Command Files" superClass="com.ti.ccstudio.buildDefinitions.PRU_2.2.exeLinker.inputType__CMD2_SRCS"/>

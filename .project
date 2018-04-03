@@ -34,6 +34,10 @@
 			<value>file:/hd/eworkspace/pru-i2c-lib</value>
 		</variable>
 		<variable>
+			<name>PRU_SW_MPU6050</name>
+			<value>file:/hd/eworkspace/pru-mpu6050-lib</value>
+		</variable>
+		<variable>
 			<name>PRU_SW_PATH</name>
 			<value>file:/hd/linuxlab/beagleboard/ti/pru-software-support-package</value>
 		</variable>
