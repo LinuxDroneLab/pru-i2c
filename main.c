@@ -140,8 +140,8 @@ int main(void)
             payload[0] = 'M';
             payload[1] = '6';
 //            getMotion6(&motion6->ax, &motion6->ay, &motion6->az, &motion6->gx, &motion6->gy, &motion6->gz);
-            motion6->ax = getClockSource();
-            motion6->ay = getAccelerationX();
+            motion6->ax = pru_mpu6050_driver_GetClockSource();
+            motion6->ay = pru_mpu6050_driver_GetAccelerationX();
             motion6->az = 2;
             motion6->gx = 3;
             motion6->gy = 4;
