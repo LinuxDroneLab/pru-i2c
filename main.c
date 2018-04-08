@@ -139,15 +139,9 @@ int main(void)
         {
             payload[0] = 'M';
             payload[1] = '6';
-//            getMotion6(&motion6->ax, &motion6->ay, &motion6->az, &motion6->gx, &motion6->gy, &motion6->gz);
-            motion6->ax = pru_mpu6050_driver_GetClockSource();
-            motion6->ay = pru_mpu6050_driver_GetAccelerationX();
-            motion6->az = 2;
-            motion6->gx = 3;
-            motion6->gy = 4;
-            motion6->gz = 5;
+            pru_mpu6050_driver_GetMotion6(&(motion6->ax), &(motion6->ay), &(motion6->az), &(motion6->gx), &(motion6->gy), &(motion6->gz));
             pru_rpmsg_send(&transport, dst, src, payload, sizeof(MPU6450Motion6)+ PAYLOAD_CONTENT_OFFSET);
-            for(counter = 0; counter < 100000; counter++) {
+            for(counter = 0; counter < 10000; counter++) {
 
             }
                // executeTasks();
@@ -168,10 +162,6 @@ int main(void)
                     if(pru_mpu6050_driver_TestConnection()) {
                         pru_rpmsg_send(&transport, dst, src, "MP", 3);
                         pru_mpu6050_driver_Initialize();
-//                        setClockSource(MPU6050_CLOCK_PLL_XGYRO);
-//                        pru_mpu6050_driver_SetFullScaleGyroRange(MPU6050_GYRO_FS_250);
-//                        setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
-//                        setSleepEnabled(0); // thanks to Jack Elston for pointing this one out!
                         pru_rpmsg_send(&transport, dst, src, "MP", 3);
                     } else {
                         pru_rpmsg_send(&transport, dst, src, "MK", 3);
