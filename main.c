@@ -137,12 +137,12 @@ int main(void)
     {
         if (active)
         {
-            payload[0] = 'M';
-            payload[1] = '6';
-            pru_mpu6050_driver_GetMotion6(&(motion6->ax), &(motion6->ay), &(motion6->az), &(motion6->gx), &(motion6->gy), &(motion6->gz));
-            pru_rpmsg_send(&transport, dst, src, payload, sizeof(MPU6450Motion6)+ PAYLOAD_CONTENT_OFFSET);
-            for(counter = 0; counter < 10000; counter++) {
-
+            uint8_t ready = pru_mpu6050_driver_GetIntDataReadyStatus();
+            if(ready) {
+                payload[0] = 'M';
+                payload[1] = '6';
+                pru_mpu6050_driver_GetMotion6(&(motion6->ax), &(motion6->ay), &(motion6->az), &(motion6->gx), &(motion6->gy), &(motion6->gz));
+                pru_rpmsg_send(&transport, dst, src, payload, sizeof(MPU6450Motion6)+ PAYLOAD_CONTENT_OFFSET);
             }
                // executeTasks();
 
@@ -157,7 +157,7 @@ int main(void)
                 {
                     active = 1;
                     pru_rpmsg_send(&transport, dst, src, "ST", 3);
-                    pru_hmc5883l_driver_Conf(2, &hmc5883lConf2);
+//                    pru_hmc5883l_driver_Conf(2, &hmc5883lConf2);
                     // pru_mpu6050_driver_Initialize();
                     if(pru_mpu6050_driver_TestConnection()) {
                         pru_rpmsg_send(&transport, dst, src, "MP", 3);
@@ -165,6 +165,7 @@ int main(void)
                         pru_rpmsg_send(&transport, dst, src, "MP", 3);
                     } else {
                         pru_rpmsg_send(&transport, dst, src, "MK", 3);
+                        active = 0;
                     }
                 }
             }
