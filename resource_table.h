@@ -43,7 +43,7 @@
 #define PRU1_TO_ARM_CHANNEL     HOST_UNUSED
 #define PRU1_FROM_ARM_CHANNEL   HOST_UNUSED
 #define HOST_INT			    0x40000000
-#define CHAN_NAME			    "rpmsg-pru"
+#define CHAN_NAME			    "mpu-6050"
 #define CHAN_DESC			    "Channel 30"
 #define CHAN_PORT			    30
 #define TO_ARM_CHANNEL          PRU0_TO_ARM_CHANNEL
@@ -57,7 +57,7 @@
 #define PRU0_TO_ARM_CHANNEL     HOST_UNUSED
 #define PRU0_FROM_ARM_CHANNEL   HOST_UNUSED
 #define HOST_INT			    0x80000000
-#define CHAN_NAME			    "rpmsg-pru"
+#define CHAN_NAME			    "mpu-6050"
 #define CHAN_DESC			    "Channel 31"
 #define CHAN_PORT			    31
 #define TO_ARM_CHANNEL          PRU1_TO_ARM_CHANNEL

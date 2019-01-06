@@ -32,17 +32,21 @@ struct pru_rpmsg_transport transport;
 unsigned short src, dst, len;
 
 uint8_t sendData(uint8_t deviceNumber, uint8_t dataBytes, unsigned char* data) {
-    payload[0] = 'H';
-    payload[1] = 'D';
-    pru_rpmsg_send(&transport, dst, src, data - PAYLOAD_CONTENT_OFFSET, dataBytes + PAYLOAD_CONTENT_OFFSET);
+    if(active) {
+        payload[0] = 'H';
+        payload[1] = 'D';
+        pru_rpmsg_send(&transport, dst, src, data - PAYLOAD_CONTENT_OFFSET, dataBytes + PAYLOAD_CONTENT_OFFSET);
+    }
     return 1; // FIXME: da adeguare alla risposta di pru_rpmsg_send
 }
 
 
 uint8_t sendTestData(uint8_t deviceNumber, uint8_t dataBytes, unsigned char* data) {
-    payload[0] = 'H';
-    payload[1] = 'S';
-    pru_rpmsg_send(&transport, dst, src, data - PAYLOAD_CONTENT_OFFSET, dataBytes + PAYLOAD_CONTENT_OFFSET);
+    if(active) {
+        payload[0] = 'H';
+         payload[1] = 'S';
+         pru_rpmsg_send(&transport, dst, src, data - PAYLOAD_CONTENT_OFFSET, dataBytes + PAYLOAD_CONTENT_OFFSET);
+    }
     return 1;
 }
 
@@ -157,16 +161,15 @@ int main(void)
                 {
                     active = 1;
                     pru_rpmsg_send(&transport, dst, src, "ST", 3);
-//                    pru_hmc5883l_driver_Conf(2, &hmc5883lConf2);
-                    // pru_mpu6050_driver_Initialize();
                     if(pru_mpu6050_driver_TestConnection()) {
-                        pru_rpmsg_send(&transport, dst, src, "MP", 3);
                         pru_mpu6050_driver_Initialize();
-                        pru_rpmsg_send(&transport, dst, src, "MP", 3);
                     } else {
                         pru_rpmsg_send(&transport, dst, src, "MK", 3);
                         active = 0;
                     }
+                } else {
+                    active = 0;
+                    pru_rpmsg_send(&transport, dst, src, "TS", 3);
                 }
             }
             else
